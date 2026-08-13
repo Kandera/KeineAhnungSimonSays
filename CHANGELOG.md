@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 — 2026-08-13
+
+- No changes to the addon itself. Housekeeping only: the working notes stay out
+  of the repository, and the CurseForge artwork lives with the source.
+
 ## 1.0.0 — 2026-08-13
 
 - **Holds the Simon-Says sequence on Azta'rec** so you do not have to.
