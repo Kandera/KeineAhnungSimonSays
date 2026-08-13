@@ -9,3 +9,6 @@
 
 # Packed addon archives
 *.zip
+
+# Internal working notes (designs, plans, reviews) stay local
+docs/superpowers/
