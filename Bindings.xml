@@ -1,0 +1,17 @@
+<Bindings>
+	<Binding name="KASS_RED" header="KASS" category="BINDING_HEADER_KASS">
+		KASS.Press(1);
+	</Binding>
+	<Binding name="KASS_BLUE" category="BINDING_HEADER_KASS">
+		KASS.Press(2);
+	</Binding>
+	<Binding name="KASS_YELLOW" category="BINDING_HEADER_KASS">
+		KASS.Press(3);
+	</Binding>
+	<Binding name="KASS_PURPLE" category="BINDING_HEADER_KASS">
+		KASS.Press(4);
+	</Binding>
+	<Binding name="KASS_RESET" category="BINDING_HEADER_KASS">
+		KASS.Reset();
+	</Binding>
+</Bindings>
