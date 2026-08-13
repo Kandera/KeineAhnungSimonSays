@@ -13,6 +13,19 @@ It cannot read the mechanic. The client exposes nothing an addon could hook, so
 **every colour is entered by hand** while the boss plays it. The addon draws what
 was typed, nothing more.
 
+## Two windows
+
+The sequence and the buttons are separate frames, moved and sized on their own:
+the sequence goes where it is comfortable to read, the buttons go where they are
+comfortable to click.
+
+Drag either with the left mouse button. Drag the small grip in its bottom-right
+corner to resize — that changes the frame's scale, not its width. The row is
+content-sized (ten squares, then it wraps), so a frame stretched wider would
+have nothing to fill the space with.
+
+Positions and scales are saved per frame.
+
 ## Input
 
 Three ways, all live at the same time — use whichever feels right:
@@ -20,10 +33,18 @@ Three ways, all live at the same time — use whichever feels right:
 - **Key bindings.** Five entries under "Keine Ahnung Simon Says" in the
   key-bindings menu. No default keys; bind them yourself.
 - **Macros.** `/kass r`, `/kass b`, `/kass y`, `/kass p`, `/kass reset`.
-- **Clicking.** The four squares in the window's bottom row.
+- **Clicking.** The four coloured buttons in the button window.
 
-Other commands: `/kass toggle` hides and shows the window, `/kass scale 1.5`
-resizes it. Drag the window with the left mouse button; its position is saved.
+## Commands
+
+| Command | Effect |
+| --- | --- |
+| `/kass r` `b` `y` `p` | append a colour |
+| `/kass reset` | clear the sequence |
+| `/kass on` / `off` | show or hide both windows |
+| `/kass toggle` | the same, flipped |
+| `/kass lock` / `unlock` | freeze moving and resizing; hides the grips |
+| `/kass scale <n>` | set both windows to a scale between 0.5 and 3 |
 
 ## Automatic reset
 
@@ -44,12 +65,13 @@ Not covered by an automated suite. Tick these off in game:
 2. Four colours appear in press order
 3. 15+ inputs wrap cleanly onto further rows
 4. Reset clears the row and the frame shrinks
-5. Move the frame, `/reload`, position holds
-6. `/kass r b y p` on an action-bar macro appends the same as the bindings
-7. Clicking the input squares appends the same as the bindings
-8. At the real Azta'rec: all three input paths register inside the encounter
+5. Move both frames apart, resize each by its grip, `/reload`, both hold
+6. `/kass lock` freezes both and hides the grips; `unlock` gives them back
+7. `/kass r b y p` on an action-bar macro appends the same as the bindings
+8. Clicking the input buttons appends the same as the bindings
+9. At the real Azta'rec: all three input paths register inside the encounter
 
-Item 8 is the one that decides. During the encounter the client reports the
+Item 9 is the one that decides. During the encounter the client reports the
 `Map`, `Combat`, `Encounter` and `Chat` addon restrictions as active — those gate
 protected functions, which this addon never calls. A probe macro confirmed that
 unprotected Lua still runs on every keypress inside the fight.
