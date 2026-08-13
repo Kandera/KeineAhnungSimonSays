@@ -1,0 +1,11 @@
+# VSCode
+.vscode/
+*.code-workspace
+
+# Claude Code: settings and worktrees are local.
+.claude/*
+!.claude/agents/
+!.claude/hooks/
+
+# Packed addon archives
+*.zip
