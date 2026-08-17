@@ -10,6 +10,11 @@ on:
         description: "Post Discord changelog only (version without v, e.g. 1.1.0)"
         required: false
         default: ""
+      dry_run:
+        description: "Check webhook + changelog without posting"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -43,7 +48,7 @@ jobs:
             See [CHANGELOG.md](https://github.com/Kandera/KeineAhnungSimonSays/blob/main/CHANGELOG.md) for what changed.
 
   discord:
-    if: ${{ (github.event_name == 'push' && !contains(github.ref_name, '-')) || (github.event_name == 'workflow_dispatch' && inputs.announce != '') }}
+    if: ${{ (github.event_name == 'push' && !contains(github.ref_name, '-')) || (github.event_name == 'workflow_dispatch' && (inputs.announce != '' || inputs.dry_run)) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +76,18 @@ jobs:
           if [ -z "$WEBHOOK_URL" ]; then
             echo "DISCORD_WEBHOOK secret is not set" >&2
             exit 1
+          fi
+
+          # GET returns webhook metadata; it does not post a channel message.
+          http=$(curl -sS -o /dev/null -w "%{http_code}" "$WEBHOOK_URL")
+          if [ "$http" != "200" ]; then
+            echo "Discord webhook GET returned HTTP $http (expected 200)" >&2
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "dry_run ok: webhook reachable, changelog for $VERSION is ${#NOTES} chars"
+            exit 0
           fi
 
           RELEASE_URL="${{ github.server_url }}/${{ github.repository }}/releases/tag/${TAG}"
