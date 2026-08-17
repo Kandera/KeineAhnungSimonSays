@@ -1,0 +1,42 @@
+KASS.OnEncounter()
+T.eq(KASS.Phase(), "idle", "encounter reset is idle")
+
+KASS.OnSermonStart()
+T.eq(KASS.Phase(), "recording", "sermon records")
+KASS.Press("N")
+KASS.Press("E")
+KASS.Press("S")
+
+KASS.OnEchoStart()
+T.eq(KASS.Phase(), "replaying", "echo replays")
+T.eq(KASS.Current(), "N", "first current")
+T.eq(KASS.Next(), "E", "first next")
+
+KASS.OnEchoTick()
+T.eq(KASS.Current(), "E", "tick advances")
+T.eq(KASS.Next(), "S", "next follows")
+
+KASS.OnEchoTick()
+T.eq(KASS.Current(), "S", "last current")
+T.eq(KASS.Next(), nil, "no next past the end")
+
+KASS.OnEchoTick()
+T.eq(KASS.Current(), "S", "extra tick does not walk off the tape")
+
+KASS.OnEncounter()
+KASS.OnSermonStart()
+KASS.Press("W")
+KASS.Press("S")
+KASS.Press("E")
+KASS.OnSermonEnd()
+T.eq(KASS.Phase(), "idle", "sermon channel end freezes recording")
+T.deep_eq(KASS.Sequence(), { "W", "S", "E" }, "sermon end keeps the tape")
+KASS.Press("N")
+T.deep_eq(KASS.Sequence(), { "W", "S", "E" }, "press after sermon end is ignored")
+KASS.OnEchoStart()
+T.eq(KASS.Phase(), "replaying", "echo casts still start replay")
+T.eq(KASS.Current(), "W", "replay starts at first pad")
+
+KASS.OnSermonStart()
+T.deep_eq(KASS.Sequence(), {}, "next sermon wipes")
+T.eq(KASS.Phase(), "recording", "and records again")

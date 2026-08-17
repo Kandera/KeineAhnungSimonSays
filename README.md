@@ -1,21 +1,20 @@
 # Keine Ahnung Simon Says
 
-A memory aid for the Simon-Says mechanic of the Delve boss **Azta'rec** in World
+A memory aid for the Simon-Says mechanic on the Delve boss **Azta'rec** in World
 of Warcraft 12.1.
 
-The boss plays a colour sequence — red, blue, yellow, purple — and expects it
-played back by clicking areas in the world. It does this several times per
-fight, and every round is a fresh sequence, one step longer than the last. This
-addon puts the sequence on screen so it does not have to be held in your head.
+During **Sermon of Ula'tek** you tap the sequence by hand. During **Echo of
+Ula'tek** the addon calls each step back: a turn arrow on screen and an English
+word in your headphones (Left, Right, Forward, Stay). Facing is the room
+centre, from the pad the previous wave left you on.
 
 ## What it does not do
 
-It cannot read the mechanic. World of Warcraft 12.x exposes nothing an addon
-could hook for it, so **every colour is entered by hand** while the boss plays
-it. The addon draws what you typed. That is the whole trick — and it is enough,
-because typing four keys is easy and remembering twelve colours is not.
+It cannot see which quarter is safe. You still press N/E/S/W during the Sermon.
+The addon records what you pressed and plays it back during the Echo.
 
-It also does not click for you. Nothing here touches a protected function.
+It also does not click for you and does not place world markers. Nothing here
+touches a protected function.
 
 ## Install
 
@@ -30,70 +29,82 @@ and the game will not find the addon.
 
 ## Setting up
 
-Open **Game Menu → Options → Key Bindings** and find the category **Keine Ahnung
-Simon Says**. Bind the four colours and the reset. There are no default keys on
-purpose: an addon that claims keys on install takes them away from your
-abilities.
+Open **Game Menu → Options → AddOns → Keine Ahnung Simon Says**, or type
+`/kass` with no arguments. Bind keys under **Key Bindings → Keine Ahnung Simon
+Says**.
 
-Four keys within reach of your movement hand work best. The colours have no
-fixed keys, so pick whatever mirrors how the areas are laid out in front of you.
+**Rebind once after upgrading from 1.0.x.** Key names changed from colour binds
+(`KASS_RED`, etc.) to compass binds (`KASS_NORTH`, `KASS_EAST`, `KASS_SOUTH`,
+`KASS_WEST`, `KASS_RESET`). Old binds do not carry over.
+
+Four keys within reach of your movement hand work best. Pick whatever mirrors
+how the quarters are laid out in front of you.
+
+Spoken cues do **not** need Combat Audio Alerts. `/kass sound` plays Left /
+Right / Forward / Stay. After replacing sound files, restart the client —
+`/reload` keeps the old clips cached.
 
 ## Using it
 
-While the boss plays the sequence, press one key per colour. The squares appear
-in the order you pressed them. Read them back, click the areas, then hit reset
-before the next round.
+While the boss channels the Sermon, press one key per safe quarter. The tape
+fills in the order you pressed. When the Echo casts begin, the callout shows a
+gold turn arrow (current) and the next raid marker underneath, and the matching
+word plays. The next Sermon clears the tape; use reset only if you need to start
+that round over.
 
-There are three ways to enter a colour, all live at the same time:
+Three ways to enter a direction, all live at the same time:
 
-- **Key bindings** — the fastest, and the only one that leaves your action bars
-  alone.
-- **Macros** — `/kass r`, `/kass b`, `/kass y`, `/kass p`, `/kass reset` on
-  clickable action-bar buttons.
-- **Clicking** — the four coloured buttons in the button window.
+- **Key bindings** — fastest; leaves your action bars alone.
+- **Macros** — `/kass n`, `/kass e`, `/kass s`, `/kass w`, `/kass reset` (old
+  colour words like `r`/`rot` still map to the default compass slots).
+- **Clicking** — the NESW board or slash commands.
 
-## The two windows
+If a round records on the tape but never calls, `/kass echo` starts replay by
+hand.
 
-The sequence and the buttons are separate frames. The sequence wants to sit
-where your eye already is; the buttons want to sit where your hand already is,
-and those are rarely the same place.
+## The three windows
 
-- Drag either window with the left mouse button.
-- Drag the small grip in its bottom-right corner to resize it. This changes the
-  window's scale rather than its width — the row is content-sized (ten squares,
-  then it wraps), so a window stretched wider would have nothing to fill the
-  space with.
-- Position and scale are saved per window.
-- `/kass lock` freezes both and hides the grips, so a stray drag in combat
-  cannot move anything.
+1. **Board** — north-up plus layout (N top, W left, E right, S bottom). Click a
+   wedge to record a direction.
+2. **Tape** — sequence row with reset button.
+3. **Callout** — large turn arrow and smaller next marker during Echo replay.
+
+Each window moves and scales on its own. `/kass lock` freezes all three.
+`/kass recenter` clears saved positions and restores defaults.
+
+By default **delve-only** hides the windows outside the Azta'rec delve (unless
+you are in combat with the boss, running a sim, or use `/kass anywhere`).
+
+## Practice
+
+`/kass sim [3-7]` runs a random practice sequence: auto-records during a fake
+Sermon, then replays with real callout and voice. `/kass sim stop` cancels.
 
 ## Commands
 
 | Command | Effect |
 | --- | --- |
-| `/kass r` `b` `y` `p` | append red, blue, yellow or purple |
+| `/kass` or `/kass options` | open the settings panel |
+| `/kass n` `e` `s` `w` | append north, east, south or west |
+| `/kass undo` | remove the last recorded direction |
 | `/kass reset` | clear the sequence |
-| `/kass on` / `/kass off` | show or hide both windows |
-| `/kass toggle` | the same, flipped |
+| `/kass on` / `/kass off` / `/kass toggle` | show, hide or flip windows |
 | `/kass lock` / `/kass unlock` | freeze or release moving and resizing |
-| `/kass scale <n>` | set both windows to a scale between 0.5 and 3 |
+| `/kass scale <n>` | set all windows to a scale between 0.5 and 3 |
+| `/kass recenter` | reset window positions to defaults |
+| `/kass sound` | test Left / Right / Forward / Stay |
+| `/kass echo` | start Echo replay from the tape |
+| `/kass status` | debug: phase, sequence, map ID |
+| `/kass anywhere` | show HUD outside the delve |
+| `/kass sim [n]` / `/kass sim stop` | practice run |
 
-German words work too: `rot`, `blau`, `gelb`, `lila`.
+German direction words work: `nord`, `ost`, `sued`, `west`. Legacy colour
+aliases (`rot`, `blau`, `gelb`, `lila`) map to the default marker slots.
 
 ## Automatic reset
 
-The sequence clears at `ENCOUNTER_START` and `ENCOUNTER_END`, so you never walk
-into a fight with the last one still on screen. Round boundaries *inside* a
-fight are invisible to the addon — clear those yourself with the reset key or
-button.
-
-## Does this work during the encounter?
-
-Yes, and it was measured rather than assumed. During the Azta'rec fight the
-client reports the `Map`, `Combat`, `Encounter` and `Chat` addon restrictions as
-active. Those restrictions gate **protected functions**, which this addon never
-calls: it writes to a table and colours a texture. A probe macro pressed fifteen
-times mid-fight executed every single time.
+The sequence clears at `ENCOUNTER_START` and `ENCOUNTER_END`. A new Sermon also
+wipes the previous sequence.
 
 ## Compatibility
 

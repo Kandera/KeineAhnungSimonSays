@@ -2,9 +2,14 @@
 ## Title: Keine Ahnung Simon Says
 ## Notes: Memory aid for the Simon-Says mechanic on the Delve boss Azta'rec.
 ## Author: Kandera
-## Version: 1.0.1
+## Version: 1.1.0
 ## SavedVariables: KASSDB
 
 # Bindings.xml is loaded by the client on its own and must not be listed here.
 
+Core.lua
+Announce.lua
+HUD.lua
+Sim.lua
+Options.lua
 KASS.lua

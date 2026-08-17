@@ -1,15 +1,15 @@
 <Bindings>
-	<Binding name="KASS_RED" header="KASS" category="BINDING_HEADER_KASS">
-		KASS.Press(1);
+	<Binding name="KASS_NORTH" header="KASS" category="BINDING_HEADER_KASS">
+		KASS.Press("N");
 	</Binding>
-	<Binding name="KASS_BLUE" category="BINDING_HEADER_KASS">
-		KASS.Press(2);
+	<Binding name="KASS_EAST" category="BINDING_HEADER_KASS">
+		KASS.Press("E");
 	</Binding>
-	<Binding name="KASS_YELLOW" category="BINDING_HEADER_KASS">
-		KASS.Press(3);
+	<Binding name="KASS_SOUTH" category="BINDING_HEADER_KASS">
+		KASS.Press("S");
 	</Binding>
-	<Binding name="KASS_PURPLE" category="BINDING_HEADER_KASS">
-		KASS.Press(4);
+	<Binding name="KASS_WEST" category="BINDING_HEADER_KASS">
+		KASS.Press("W");
 	</Binding>
 	<Binding name="KASS_RESET" category="BINDING_HEADER_KASS">
 		KASS.Reset();

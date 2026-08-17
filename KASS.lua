@@ -1,357 +1,571 @@
--- Keine Ahnung Simon Says
---
--- Records the colour sequence the player types along while the Delve boss
--- Azta'rec plays it, and draws it in a small movable window. The addon cannot
--- read the mechanic -- every colour here was entered by hand.
---
--- Two windows, moved and sized apart: the sequence goes where the player wants
--- to read it, the buttons go where the player wants to click.
+-- Addon glue: SavedVariables, slash, events. Sequence logic lives in Core.lua.
 
 local ADDON_NAME = ...
 
-KASS = {}
+KASS = KASS or {}
 
--- =====================================================================
--- Constants
--- =====================================================================
-
--- Order is fixed: the binding bodies in Bindings.xml pass these indices.
-local COLORS = {
-	{ key = "RED",    label = "Rot",  r = 0.85, g = 0.15, b = 0.15 },
-	{ key = "BLUE",   label = "Blau", r = 0.20, g = 0.45, b = 0.95 },
-	{ key = "YELLOW", label = "Gelb", r = 0.95, g = 0.82, b = 0.15 },
-	{ key = "PURPLE", label = "Lila", r = 0.62, g = 0.25, b = 0.85 },
+-- Delve map IDs where HUD may show when delveOnly is on.
+-- 2512 = Coiled Isle (Azta'rec), from Icy Veins /way — run /kass status in the boss room for the interior map ID.
+KASS.MAP_IDS = {
+	[2512] = true,
 }
 
--- Short forms accepted by the slash command, so a macro stays one word.
-local SLASH_COLORS = {
-	r = 1, red = 1, rot = 1,
-	b = 2, blue = 2, blau = 2,
-	y = 3, yellow = 3, gelb = 3, g = 3,
-	p = 4, purple = 4, lila = 4,
-}
-
-local TILE = 32          -- edge length of one sequence square
-local GAP = 5            -- space between squares
-local PAD = 8            -- frame border padding
-local PER_ROW = 10       -- squares before the row wraps
-local BUTTON = 36        -- edge length of an input button
-local RESET_WIDTH = 70
-local GRIP = 12          -- resize grip, reserved at the bottom of each frame
-
-local MIN_SCALE, MAX_SCALE = 0.5, 3
-local SCALE_PER_PIXEL = 1 / 200  -- how far the grip must travel to double
-
-local ROW_WIDTH = PER_ROW * TILE + (PER_ROW - 1) * GAP
-local INPUT_WIDTH = #COLORS * BUTTON + (#COLORS - 1) * GAP + GAP * 4 + RESET_WIDTH
-
--- =====================================================================
--- Key binding labels
--- =====================================================================
+KASS.encounterActive = false
 
 BINDING_HEADER_KASS = "Keine Ahnung Simon Says"
-BINDING_NAME_KASS_RED = "Rot"
-BINDING_NAME_KASS_BLUE = "Blau"
-BINDING_NAME_KASS_YELLOW = "Gelb"
-BINDING_NAME_KASS_PURPLE = "Lila"
+BINDING_NAME_KASS_NORTH = "Nord"
+BINDING_NAME_KASS_EAST = "Ost"
+BINDING_NAME_KASS_SOUTH = "Sued"
+BINDING_NAME_KASS_WEST = "West"
 BINDING_NAME_KASS_RESET = "Zuruecksetzen"
 
--- =====================================================================
--- State
--- =====================================================================
+local DEFAULT_MARKERS = { N = 1, E = 3, S = 6, W = 7 }
 
-local sequence = {}  -- entries 1..4, in the order they were pressed
-local tiles = {}     -- textures, created on demand and reused
-local display        -- the sequence window
-local input          -- the button window
+local SERMON_SPELL_IDS = { 1288124, 1306239, 1309222 }
+local ECHO_SPELL_IDS = { 1288125 }
 
--- =====================================================================
--- Saved position and scale
--- =====================================================================
+local sermonIDs = {}
+local echoIDs = {}
+local sermonNames = {}
+local echoNames = {}
 
--- Every frame keeps its own entry in KASSDB under this key.
-local function Store(frame)
-	KASSDB[frame.dbKey] = KASSDB[frame.dbKey] or {}
-	return KASSDB[frame.dbKey]
-end
+local echoTicker = nil
+local echoArmed = false
+local channelUnit = nil
+local channelStartAt = 0
+local lastEchoCastAt = 0
+local MIN_SERMON_SECONDS = 8
+local ECHO_CAST_DEBOUNCE = 1
+local AdvanceEcho
 
-local function SavePosition(frame)
-	local point, _, relPoint, x, y = frame:GetPoint()
-	Store(frame).pos = { point = point, relPoint = relPoint, x = x, y = y }
-end
+KASS.lastSpellId = nil
+KASS.lastSpellName = nil
 
-local function RestorePosition(frame, defaultY)
-	frame:ClearAllPoints()
-	local pos = Store(frame).pos
-	if pos then
-		frame:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
-	else
-		frame:SetPoint("CENTER", UIParent, "CENTER", 0, defaultY)
+local corePress = KASS.Press
+local coreReset = KASS.Reset
+local coreUndo = KASS.Undo
+local coreSetMarker = KASS.SetMarker
+
+local function RefreshHUD()
+	if KASS.HUD and KASS.HUD.ApplyVisibility then
+		KASS.HUD.ApplyVisibility()
+	elseif KASS.HUD and KASS.HUD.Refresh then
+		KASS.HUD.Refresh()
 	end
-	frame:SetScale(Store(frame).scale or 1)
 end
 
--- =====================================================================
--- Window plumbing shared by both frames
--- =====================================================================
-
-local function AddResizeGrip(frame)
-	local grip = CreateFrame("Button", nil, frame)
-	grip:SetSize(GRIP, GRIP)
-	grip:SetPoint("BOTTOMRIGHT", -2, 2)
-
-	local texture = grip:CreateTexture(nil, "OVERLAY")
-	texture:SetAllPoints()
-	texture:SetColorTexture(1, 1, 1, 0.25)
-
-	grip:SetScript("OnEnter", function() texture:SetAlpha(0.7) end)
-	grip:SetScript("OnLeave", function() texture:SetAlpha(0.25) end)
-
-	-- Dragging the grip changes scale, not size: the row is content-sized, so
-	-- a wider frame would have nothing to fill the space with.
-	grip:SetScript("OnMouseDown", function(self)
-		if KASSDB.locked then return end
-		self.startX = GetCursorPosition()
-		self.startScale = frame:GetScale()
-		self:SetScript("OnUpdate", function(this)
-			local delta = GetCursorPosition() - this.startX
-			local scale = this.startScale + delta * SCALE_PER_PIXEL
-			frame:SetScale(math.max(MIN_SCALE, math.min(MAX_SCALE, scale)))
-		end)
-	end)
-
-	grip:SetScript("OnMouseUp", function(self)
-		self:SetScript("OnUpdate", nil)
-		Store(frame).scale = frame:GetScale()
-	end)
-
-	frame.grip = grip
-end
-
-local function CreateWindow(name, dbKey, width, height)
-	local frame = CreateFrame("Frame", name, UIParent, "BackdropTemplate")
-	frame.dbKey = dbKey
-	frame:SetSize(width, height)
-	frame:SetBackdrop({
-		bgFile = "Interface\\Buttons\\WHITE8X8",
-		edgeFile = "Interface\\Buttons\\WHITE8X8",
-		edgeSize = 1,
-	})
-	frame:SetBackdropColor(0, 0, 0, 0.6)
-	frame:SetBackdropBorderColor(0, 0, 0, 0.9)
-	frame:SetClampedToScreen(true)
-	frame:SetMovable(true)
-	frame:EnableMouse(true)
-	frame:RegisterForDrag("LeftButton")
-	frame:SetScript("OnDragStart", function(self)
-		if not KASSDB.locked then self:StartMoving() end
-	end)
-	frame:SetScript("OnDragStop", function(self)
-		self:StopMovingOrSizing()
-		SavePosition(self)
-	end)
-	AddResizeGrip(frame)
-	return frame
-end
-
--- =====================================================================
--- Sequence window
--- =====================================================================
-
-local function GetTile(index)
-	local tile = tiles[index]
-	if not tile then
-		tile = display:CreateTexture(nil, "ARTWORK")
-		tile:SetSize(TILE, TILE)
-		tiles[index] = tile
-	end
-	return tile
-end
-
--- Places every square and resizes the sequence window around them. An empty
--- sequence still reserves one row so the window does not jump on the first
--- press -- and stays findable when nothing has been entered yet.
-local function Layout()
-	local count = #sequence
-	local rows = math.max(1, math.ceil(count / PER_ROW))
-
-	for i = 1, count do
-		local tile = GetTile(i)
-		local row = math.floor((i - 1) / PER_ROW)
-		local col = (i - 1) % PER_ROW
-		tile:ClearAllPoints()
-		tile:SetPoint("TOPLEFT", display, "TOPLEFT",
-			PAD + col * (TILE + GAP),
-			-(PAD + row * (TILE + GAP)))
-		local color = COLORS[sequence[i]]
-		tile:SetColorTexture(color.r, color.g, color.b)
-		tile:Show()
-	end
-
-	for i = count + 1, #tiles do
-		tiles[i]:Hide()
-	end
-
-	display:SetHeight(PAD + rows * TILE + (rows - 1) * GAP + PAD + GRIP)
-	input.count:SetText(count > 0 and tostring(count) or "")
-end
-
--- =====================================================================
--- Button window
--- =====================================================================
-
-local function CreateInputButton(parent, index)
-	local color = COLORS[index]
-	local button = CreateFrame("Button", nil, parent)
-	button:SetSize(BUTTON, BUTTON)
-
-	local background = button:CreateTexture(nil, "ARTWORK")
-	background:SetAllPoints()
-	background:SetColorTexture(color.r, color.g, color.b)
-
-	-- No shared highlight texture: an alpha change needs no art asset and so
-	-- cannot break on a patch that moves one.
-	button:SetScript("OnEnter", function() background:SetAlpha(0.6) end)
-	button:SetScript("OnLeave", function() background:SetAlpha(1) end)
-	button:SetScript("OnClick", function() KASS.Press(index) end)
-
-	return button
-end
-
-local function BuildInputWindow()
-	local previous
-	for i = 1, #COLORS do
-		local button = CreateInputButton(input, i)
-		if previous then
-			button:SetPoint("LEFT", previous, "RIGHT", GAP, 0)
-		else
-			button:SetPoint("TOPLEFT", input, "TOPLEFT", PAD, -PAD)
-		end
-		previous = button
-	end
-
-	local reset = CreateFrame("Button", nil, input, "UIPanelButtonTemplate")
-	reset:SetSize(RESET_WIDTH, BUTTON)
-	reset:SetPoint("TOPRIGHT", input, "TOPRIGHT", -PAD, -PAD)
-	reset:SetText("Reset")
-	reset:SetScript("OnClick", function() KASS.Reset() end)
-
-	-- Length of the sequence, so a long row can be checked at a glance.
-	input.count = input:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	input.count:SetPoint("RIGHT", reset, "LEFT", -GAP, 0)
-end
-
--- =====================================================================
--- Input
--- =====================================================================
-
-function KASS.Press(index)
-	if not COLORS[index] then return end
-	sequence[#sequence + 1] = index
-	Layout()
+function KASS.Press(input)
+	corePress(input)
+	RefreshHUD()
 end
 
 function KASS.Reset()
-	wipe(sequence)
-	Layout()
+	coreReset()
+	RefreshHUD()
 end
 
-function KASS.Show()
-	KASSDB.hidden = false
-	display:Show()
-	input:Show()
+function KASS.Undo()
+	coreUndo()
+	RefreshHUD()
 end
 
-function KASS.Hide()
-	KASSDB.hidden = true
-	display:Hide()
-	input:Hide()
-end
-
-function KASS.Toggle()
-	if KASSDB.hidden then KASS.Show() else KASS.Hide() end
-end
-
-function KASS.SetLocked(locked)
-	KASSDB.locked = locked
-	display.grip:SetShown(not locked)
-	input.grip:SetShown(not locked)
-	print("KASS: " .. (locked and "Fenster gesperrt." or "Fenster frei."))
-end
-
-function KASS.SetScale(scale)
-	display:SetScale(scale)
-	input:SetScale(scale)
-	Store(display).scale = scale
-	Store(input).scale = scale
-end
-
--- =====================================================================
--- Slash command
--- =====================================================================
-
-SLASH_KASS1 = "/kass"
-SlashCmdList["KASS"] = function(message)
-	local command, argument = message:lower():match("^%s*(%S*)%s*(%S*)")
-
-	if SLASH_COLORS[command] then
-		KASS.Press(SLASH_COLORS[command])
-	elseif command == "reset" or command == "clear" then
-		KASS.Reset()
-	elseif command == "on" or command == "show" then
-		KASS.Show()
-	elseif command == "off" or command == "hide" then
-		KASS.Hide()
-	elseif command == "toggle" or command == "" then
-		KASS.Toggle()
-	elseif command == "lock" then
-		KASS.SetLocked(true)
-	elseif command == "unlock" then
-		KASS.SetLocked(false)
-	elseif command == "scale" then
-		local scale = tonumber(argument)
-		if scale and scale >= MIN_SCALE and scale <= MAX_SCALE then
-			KASS.SetScale(scale)
-		else
-			print(("KASS: /kass scale <%s - %s>"):format(MIN_SCALE, MAX_SCALE))
+function KASS.SetMarker(quadrant, index)
+	coreSetMarker(quadrant, index)
+	if KASSDB and KASSDB.markers then
+		for q, markerIndex in pairs(KASS.MARKERS) do
+			KASSDB.markers[q] = markerIndex
 		end
-	else
-		print("KASS: /kass r | b | y | p | reset | on | off | lock | unlock | scale <n>")
+	end
+	RefreshHUD()
+end
+
+local function ResolveSpellName(id)
+	if not id then
+		return nil
+	end
+	if C_Spell and C_Spell.GetSpellInfo then
+		local info = C_Spell.GetSpellInfo(id)
+		if type(info) == "table" and info.name then
+			return info.name
+		end
+		if type(info) == "string" then
+			return info
+		end
+	end
+	if GetSpellInfo then
+		return GetSpellInfo(id)
 	end
 end
 
--- =====================================================================
--- Events
--- =====================================================================
+local function BuildSpellSets()
+	for _, id in ipairs(SERMON_SPELL_IDS) do
+		sermonIDs[id] = true
+		local name = ResolveSpellName(id)
+		if name and name ~= "" then
+			sermonNames[name] = true
+		end
+	end
+	for _, id in ipairs(ECHO_SPELL_IDS) do
+		echoIDs[id] = true
+		local name = ResolveSpellName(id)
+		if name and name ~= "" then
+			echoNames[name] = true
+		end
+	end
+end
+
+BuildSpellSets()
+
+local function IsSecret(value)
+	return issecretvalue ~= nil and issecretvalue(value) == true
+end
+
+local function PublicValue(value)
+	if value == nil or IsSecret(value) then
+		return nil
+	end
+	return value
+end
+
+local function NoteSpell(id, name)
+	id = PublicValue(id)
+	name = PublicValue(name)
+	if id then
+		KASS.lastSpellId = id
+	end
+	if name and name ~= "" then
+		KASS.lastSpellName = name
+	end
+end
+
+local function IsSermonSpell(id, name)
+	if id and sermonIDs[id] then
+		return true
+	end
+	if name and sermonNames[name] then
+		return true
+	end
+	return false
+end
+
+local function IsEchoSpell(id, name)
+	if id and echoIDs[id] then
+		return true
+	end
+	if name and echoNames[name] then
+		return true
+	end
+	return false
+end
+
+local function IsBossUnit(unit)
+	return type(unit) == "string" and unit:match("^boss%d$") ~= nil
+end
+
+local function IsFightCaster(unit)
+	if IsBossUnit(unit) then
+		return true
+	end
+	if not KASS.encounterActive or not unit then
+		return false
+	end
+	if UnitExists and not UnitExists(unit) then
+		return false
+	end
+	if UnitIsPlayer and UnitIsPlayer(unit) then
+		return false
+	end
+	return true
+end
+
+local function SameChanneler(unit)
+	return unit ~= nil and unit == channelUnit
+end
+
+local function CancelEchoTicker()
+	if echoTicker then
+		echoTicker:Cancel()
+		echoTicker = nil
+	end
+end
+
+local function OnSermonDetected()
+	echoArmed = false
+	lastEchoCastAt = 0
+	CancelEchoTicker()
+	if KASS.Phase() == "recording" then
+		return
+	end
+	KASS.OnSermonStart()
+	RefreshHUD()
+end
+
+local function StartEchoFallbackTicker()
+	if echoTicker then
+		echoTicker:Cancel()
+	end
+	echoTicker = C_Timer.NewTicker(3, function()
+		if KASS.Phase() ~= "replaying" then
+			return
+		end
+		AdvanceEcho()
+	end)
+end
+
+local function OnEchoStartDetected()
+	if KASS.Phase() == "replaying" then
+		return
+	end
+	echoArmed = false
+	CancelEchoTicker()
+	lastEchoCastAt = GetTime()
+	KASS.OnEchoStart()
+	RefreshHUD()
+	StartEchoFallbackTicker()
+end
+
+local function OnEchoEndDetected()
+	CancelEchoTicker()
+	KASS.OnEchoEnd()
+	RefreshHUD()
+end
+
+-- Cast start, combat log, and the 3s fallback all share this gate so two
+-- sources cannot announce the next pad in the same beat.
+AdvanceEcho = function()
+	local now = GetTime()
+	if lastEchoCastAt > 0 and (now - lastEchoCastAt) < ECHO_CAST_DEBOUNCE then
+		return
+	end
+	lastEchoCastAt = now
+	if KASS.Phase() ~= "replaying" then
+		if not echoArmed and #KASS.Sequence() == 0 then
+			return
+		end
+		OnEchoStartDetected()
+		return
+	end
+	if echoTicker then
+		echoTicker:Cancel()
+		echoTicker = nil
+	end
+	KASS.OnEchoTick()
+	RefreshHUD()
+end
+
+local function HandleCombatLog()
+	local ok, payload = pcall(function()
+		return { CombatLogGetCurrentEventInfo() }
+	end)
+	if not ok or type(payload) ~= "table" then
+		return
+	end
+	local subevent = PublicValue(payload[2])
+	local spellId = PublicValue(payload[12])
+	local spellName = PublicValue(payload[13])
+	if not subevent then
+		return
+	end
+	NoteSpell(spellId, spellName)
+
+	if IsSermonSpell(spellId, spellName) then
+		if subevent == "SPELL_CAST_SUCCESS" or subevent == "SPELL_AURA_APPLIED" then
+			OnSermonDetected()
+		end
+	elseif IsEchoSpell(spellId, spellName) then
+		if subevent == "SPELL_AURA_APPLIED" then
+			AdvanceEcho()
+		elseif subevent == "SPELL_AURA_REMOVED" then
+			OnEchoEndDetected()
+		end
+	end
+end
+
+local function BossChannelInfo(unit)
+	if not UnitChannelInfo then
+		return nil, nil
+	end
+	local name, _, _, _, _, _, _, spellId = UnitChannelInfo(unit)
+	return PublicValue(name), PublicValue(spellId)
+end
+
+-- Sermon is the long boss channel. Echo waves are later casts by the
+-- same unit, not a second channel.
+local function OnBossChannelStart(unit, eventSpellId)
+	if not IsFightCaster(unit) then
+		return
+	end
+	if KASS.Phase() == "recording" then
+		if SameChanneler(unit) or IsBossUnit(unit) then
+			channelUnit = unit
+		end
+		return
+	end
+
+	local name, channelSpellId = BossChannelInfo(unit)
+	local spellId = PublicValue(eventSpellId) or channelSpellId
+	NoteSpell(spellId, name)
+
+	channelUnit = unit
+	channelStartAt = GetTime()
+	if IsEchoSpell(spellId, name) then
+		OnEchoStartDetected()
+		return
+	end
+	OnSermonDetected()
+end
+
+local function OnBossChannelStop(unit)
+	if channelUnit and unit and not SameChanneler(unit) then
+		return
+	end
+	if KASS.Phase() ~= "recording" then
+		return
+	end
+	local elapsed = GetTime() - channelStartAt
+	if elapsed < MIN_SERMON_SECONDS then
+		echoArmed = false
+		KASS.Reset()
+		RefreshHUD()
+		return
+	end
+	if #KASS.Sequence() > 0 then
+		echoArmed = true
+		KASS.OnSermonEnd()
+		RefreshHUD()
+	end
+end
+
+local function OnEchoCast(unit)
+	if not echoArmed and KASS.Phase() ~= "replaying" then
+		return
+	end
+	if not IsFightCaster(unit) then
+		return
+	end
+	if channelUnit and not SameChanneler(unit) then
+		return
+	end
+	if #KASS.Sequence() == 0 then
+		return
+	end
+	AdvanceEcho()
+end
+
+function KASS.StartEcho()
+	if #KASS.Sequence() == 0 then
+		print("KASS: Nichts aufgenommen.")
+		return
+	end
+	OnEchoStartDetected()
+end
+
+local function MigrateDB()
+	local display = KASSDB.display
+	local input = KASSDB.input
+	local hidden = KASSDB.hidden
+	local locked = KASSDB.locked
+	local anywhere = KASSDB.anywhere
+
+	if not KASSDB.schemaVersion or KASSDB.schemaVersion < 2 then
+		KASSDB.schemaVersion = 2
+		KASSDB.delveOnly = true
+		KASSDB.markers = {
+			N = DEFAULT_MARKERS.N,
+			E = DEFAULT_MARKERS.E,
+			S = DEFAULT_MARKERS.S,
+			W = DEFAULT_MARKERS.W,
+		}
+		KASSDB.voice = { enabled = true, style = "marker", volume = 100 }
+		KASSDB.calloutEnabled = true
+		KASSDB.nextEnabled = true
+
+		if display then
+			KASSDB.display = display
+		end
+		if input then
+			KASSDB.input = input
+		end
+		if hidden ~= nil then
+			KASSDB.hidden = hidden
+		end
+		if locked ~= nil then
+			KASSDB.locked = locked
+		end
+		if anywhere ~= nil then
+			KASSDB.anywhere = anywhere
+		end
+	end
+
+	KASSDB.hidden = KASSDB.hidden or false
+	KASSDB.locked = KASSDB.locked or false
+	KASSDB.delveOnly = KASSDB.delveOnly ~= false
+	KASSDB.markers = KASSDB.markers or {
+		N = DEFAULT_MARKERS.N,
+		E = DEFAULT_MARKERS.E,
+		S = DEFAULT_MARKERS.S,
+		W = DEFAULT_MARKERS.W,
+	}
+	KASSDB.voice = KASSDB.voice or { enabled = true, style = "marker", volume = 100 }
+	KASSDB.calloutEnabled = KASSDB.calloutEnabled ~= false
+	KASSDB.nextEnabled = KASSDB.nextEnabled ~= false
+	KASSDB.callout = KASSDB.callout or {}
+
+	for quadrant, index in pairs(KASSDB.markers) do
+		KASS.MARKERS[quadrant] = index
+	end
+end
+
+local function FormatSequence()
+	local seq = KASS.Sequence()
+	if #seq == 0 then
+		return "(empty)"
+	end
+	return table.concat(seq, " ")
+end
+
+local function StatusVoiceID()
+	if C_TTSSettings and C_TTSSettings.GetVoiceOptionID and Enum and Enum.TtsVoiceType then
+		local voiceID = C_TTSSettings.GetVoiceOptionID(Enum.TtsVoiceType.Standard)
+		if voiceID ~= nil then
+			return tostring(voiceID)
+		end
+	end
+	return "n/a"
+end
+
+local function StatusMapID()
+	if C_Map and C_Map.GetBestMapForUnit then
+		local mapID = C_Map.GetBestMapForUnit("player")
+		if mapID then
+			return tostring(mapID)
+		end
+	end
+	return "n/a"
+end
+
+SLASH_KASS1 = "/kass"
+SlashCmdList["KASS"] = function(message)
+	local command, argument = strmatch(message:lower(), "^%s*(%S*)%s*(%S*)")
+
+	local quadrant = KASS.AliasToQuadrant(command)
+	if quadrant then
+		KASS.Press(quadrant)
+	elseif command == "undo" then
+		KASS.Undo()
+	elseif command == "reset" or command == "clear" then
+		KASS.Reset()
+	elseif command == "on" or command == "show" then
+		KASS.HUD.Show()
+	elseif command == "off" or command == "hide" then
+		KASS.HUD.Hide()
+	elseif command == "toggle" then
+		KASS.HUD.Toggle()
+	elseif command == "" or command == "options" then
+		if KASS.Options and KASS.Options.Open then
+			KASS.Options.Open()
+		else
+			print("KASS: Optionen noch nicht geladen.")
+		end
+	elseif command == "recenter" then
+		if KASS.HUD and KASS.HUD.Recenter then
+			KASS.HUD.Recenter()
+		end
+	elseif command == "lock" then
+		KASS.HUD.SetLocked(true)
+	elseif command == "unlock" then
+		KASS.HUD.SetLocked(false)
+	elseif command == "scale" then
+		local scale = tonumber(argument)
+		if scale and scale >= KASS.HUD.MIN_SCALE and scale <= KASS.HUD.MAX_SCALE then
+			KASS.HUD.SetScale(scale)
+		else
+			print(("KASS: /kass scale <%s - %s>"):format(
+				KASS.HUD.MIN_SCALE, KASS.HUD.MAX_SCALE))
+		end
+	elseif command == "sound" then
+		KASS.TestSound()
+	elseif command == "status" then
+		print(("KASS: phase=%s sequence=%s cursor=%d lastSpell=%s (%s) map=%s voice=%s anywhere=%s"):format(
+			KASS.Phase(),
+			FormatSequence(),
+			KASS.Cursor(),
+			tostring(KASS.lastSpellId or "none"),
+			tostring(KASS.lastSpellName or "none"),
+			StatusMapID(),
+			StatusVoiceID(),
+			tostring(KASSDB.anywhere)))
+	elseif command == "anywhere" then
+		KASSDB.anywhere = not KASSDB.anywhere
+		print(("KASS: anywhere=%s"):format(tostring(KASSDB.anywhere)))
+		RefreshHUD()
+	elseif command == "echo" or command == "play" then
+		KASS.StartEcho()
+	elseif command == "sim" then
+		if argument == "stop" then
+			KASS.Sim.Stop()
+		else
+			KASS.Sim.Start(argument ~= "" and argument or nil)
+		end
+	else
+		print("KASS: /kass n | e | s | w | undo | reset | on | off | toggle | lock | unlock | scale <n>")
+		print("KASS:   sound | status | anywhere | options | recenter | echo | sim [3-7] | sim stop")
+	end
+end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("ENCOUNTER_START")
 events:RegisterEvent("ENCOUNTER_END")
-events:SetScript("OnEvent", function(_, event, arg1)
+events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+events:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
+events:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+events:RegisterEvent("UNIT_SPELLCAST_START")
+events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
 	if event == "ADDON_LOADED" then
-		if arg1 ~= ADDON_NAME then return end
-		KASSDB = KASSDB or {}
-
-		display = CreateWindow("KASSDisplay", "display",
-			ROW_WIDTH + 2 * PAD, PAD + TILE + PAD + GRIP)
-		input = CreateWindow("KASSInput", "input",
-			INPUT_WIDTH + 2 * PAD, PAD + BUTTON + PAD + GRIP)
-		BuildInputWindow()
-
-		RestorePosition(display, -100)
-		RestorePosition(input, -200)
-
-		display.grip:SetShown(not KASSDB.locked)
-		input.grip:SetShown(not KASSDB.locked)
-		if KASSDB.hidden then
-			display:Hide()
-			input:Hide()
+		if arg1 ~= ADDON_NAME then
+			return
 		end
-		Layout()
-	else
-		-- Round boundaries inside the fight are the player's reset key; the
-		-- addon only clears at the edges of the encounter, which it can see.
-		KASS.Reset()
+		KASSDB = KASSDB or {}
+		MigrateDB()
+		KASS.sermonSeen = false
+		KASS.lastSpellId = nil
+		KASS.lastSpellName = nil
+		KASS.encounterActive = false
+		KASS.HUD.Create()
+		RefreshHUD()
+	elseif event == "ENCOUNTER_START" then
+		if KASS.Sim and KASS.Sim.Stop then
+			KASS.Sim.Stop()
+		end
+		KASS.encounterActive = true
+		echoArmed = false
+		channelUnit = nil
+		CancelEchoTicker()
+		KASS.OnEncounter()
+		RefreshHUD()
+	elseif event == "ENCOUNTER_END" then
+		if KASS.Sim and KASS.Sim.Stop then
+			KASS.Sim.Stop()
+		end
+		KASS.encounterActive = false
+		echoArmed = false
+		channelUnit = nil
+		CancelEchoTicker()
+		KASS.OnEncounter()
+		RefreshHUD()
+	elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
+		RefreshHUD()
+	elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+		HandleCombatLog()
+	elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
+		local unit, _, spellId = arg1, arg2, arg3
+		OnBossChannelStart(unit, spellId)
+	elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+		OnBossChannelStop(arg1)
+	elseif event == "UNIT_SPELLCAST_START" then
+		OnEchoCast(arg1)
 	end
 end)
