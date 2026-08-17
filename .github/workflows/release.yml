@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pack addon zip
+        run: |
+          mkdir -p dist/KeineAhnungSimonSays/media
+          cp Bindings.xml CHANGELOG.md LICENSE README.md KeineAhnungSimonSays.toc dist/KeineAhnungSimonSays/
+          cp Announce.lua Core.lua HUD.lua KASS.lua Options.lua Sim.lua dist/KeineAhnungSimonSays/
+          cp media/*.ogg dist/KeineAhnungSimonSays/media/
+          (cd dist && zip -r ../KeineAhnungSimonSays.zip KeineAhnungSimonSays)
+          unzip -l KeineAhnungSimonSays.zip
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: KeineAhnungSimonSays.zip
+          name: ${{ github.ref_name }}
+          body: |
+            Download `KeineAhnungSimonSays.zip` below and extract it into `World of Warcraft\_retail_\Interface\AddOns\`, then restart the client.
+
+            Use the zip attached here, **not** the green "Download ZIP" button — that one names the folder `KeineAhnungSimonSays-main` and the game will not find the addon.
+
+            See [CHANGELOG.md](https://github.com/Kandera/KeineAhnungSimonSays/blob/main/CHANGELOG.md) for what changed.
