@@ -2,6 +2,11 @@
 
 **English** | [Deutsch](https://github.com/Kandera/KeineAhnungSimonSays/blob/main/CHANGELOG-de.md)
 
+## [1.1.1] - 2026-08-18
+
+### Fixed
+- **No BugGrabber error on load.** 12.x forbids the combat log; Sermon and Echo still follow the boss's casts.
+
 ## [1.1.0] - 2026-08-17
 
 ### Added

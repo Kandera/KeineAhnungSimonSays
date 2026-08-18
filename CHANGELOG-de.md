@@ -2,6 +2,11 @@
 
 [English](https://github.com/Kandera/KeineAhnungSimonSays/blob/main/CHANGELOG.md) | **Deutsch**
 
+## [1.1.1] - 2026-08-18
+
+### Behoben
+- **Kein BugGrabber-Fehler mehr beim Laden.** 12.x verbietet den Kampflog; Sermon und Echo folgen weiter den Boss-Casts.
+
 ## [1.1.0] - 2026-08-17
 
 ### Hinzugefügt

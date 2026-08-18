@@ -54,6 +54,7 @@ dofile("tests/test_detector.lua")
 dofile("tests/test_press_gate.lua")
 dofile("tests/test_announce.lua")
 dofile("tests/test_sim.lua")
+dofile("tests/test_wiring.lua")
 
 io.write(string.format("%d passed, %d failed\n", pass, fail))
 os.exit(fail > 0 and 1 or 0)

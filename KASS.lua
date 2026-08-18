@@ -21,12 +21,9 @@ BINDING_NAME_KASS_RESET = "Zuruecksetzen"
 
 local DEFAULT_MARKERS = { N = 1, E = 3, S = 6, W = 7 }
 
-local SERMON_SPELL_IDS = { 1288124, 1306239, 1309222 }
 local ECHO_SPELL_IDS = { 1288125 }
 
-local sermonIDs = {}
 local echoIDs = {}
-local sermonNames = {}
 local echoNames = {}
 
 local echoTicker = nil
@@ -98,13 +95,6 @@ local function ResolveSpellName(id)
 end
 
 local function BuildSpellSets()
-	for _, id in ipairs(SERMON_SPELL_IDS) do
-		sermonIDs[id] = true
-		local name = ResolveSpellName(id)
-		if name and name ~= "" then
-			sermonNames[name] = true
-		end
-	end
 	for _, id in ipairs(ECHO_SPELL_IDS) do
 		echoIDs[id] = true
 		local name = ResolveSpellName(id)
@@ -136,16 +126,6 @@ local function NoteSpell(id, name)
 	if name and name ~= "" then
 		KASS.lastSpellName = name
 	end
-end
-
-local function IsSermonSpell(id, name)
-	if id and sermonIDs[id] then
-		return true
-	end
-	if name and sermonNames[name] then
-		return true
-	end
-	return false
 end
 
 local function IsEchoSpell(id, name)
@@ -224,14 +204,8 @@ local function OnEchoStartDetected()
 	StartEchoFallbackTicker()
 end
 
-local function OnEchoEndDetected()
-	CancelEchoTicker()
-	KASS.OnEchoEnd()
-	RefreshHUD()
-end
-
--- Cast start, combat log, and the 3s fallback all share this gate so two
--- sources cannot announce the next pad in the same beat.
+-- Cast start and the 3s fallback share this gate so two sources cannot
+-- announce the next pad in the same beat.
 AdvanceEcho = function()
 	local now = GetTime()
 	if lastEchoCastAt > 0 and (now - lastEchoCastAt) < ECHO_CAST_DEBOUNCE then
@@ -251,34 +225,6 @@ AdvanceEcho = function()
 	end
 	KASS.OnEchoTick()
 	RefreshHUD()
-end
-
-local function HandleCombatLog()
-	local ok, payload = pcall(function()
-		return { CombatLogGetCurrentEventInfo() }
-	end)
-	if not ok or type(payload) ~= "table" then
-		return
-	end
-	local subevent = PublicValue(payload[2])
-	local spellId = PublicValue(payload[12])
-	local spellName = PublicValue(payload[13])
-	if not subevent then
-		return
-	end
-	NoteSpell(spellId, spellName)
-
-	if IsSermonSpell(spellId, spellName) then
-		if subevent == "SPELL_CAST_SUCCESS" or subevent == "SPELL_AURA_APPLIED" then
-			OnSermonDetected()
-		end
-	elseif IsEchoSpell(spellId, spellName) then
-		if subevent == "SPELL_AURA_APPLIED" then
-			AdvanceEcho()
-		elseif subevent == "SPELL_AURA_REMOVED" then
-			OnEchoEndDetected()
-		end
-	end
 end
 
 local function BossChannelInfo(unit)
@@ -517,7 +463,6 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("ENCOUNTER_START")
 events:RegisterEvent("ENCOUNTER_END")
-events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 events:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
 events:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
 events:RegisterEvent("UNIT_SPELLCAST_START")
@@ -558,8 +503,6 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
 		RefreshHUD()
 	elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
 		RefreshHUD()
-	elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-		HandleCombatLog()
 	elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
 		local unit, _, spellId = arg1, arg2, arg3
 		OnBossChannelStart(unit, spellId)

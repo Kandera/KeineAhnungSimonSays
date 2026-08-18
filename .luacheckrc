@@ -25,7 +25,6 @@ globals = {
 	"CreateFrame",
 	"UIParent",
 	"GetCursorPosition",
-	"CombatLogGetCurrentEventInfo",
 	"GetSpellInfo",
 	"Settings",
 	"UIDropDownMenu_SetWidth",
