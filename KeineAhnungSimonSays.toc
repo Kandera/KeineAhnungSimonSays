@@ -4,6 +4,7 @@
 ## Author: Kandera
 ## Version: 1.1.1
 ## SavedVariables: KASSDB
+## X-Curse-Project-ID: 1650983
 
 # Bindings.xml is loaded by the client on its own and must not be listed here.
 

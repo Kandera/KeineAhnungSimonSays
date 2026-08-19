@@ -1,0 +1,13 @@
+package-as: KeineAhnungSimonSays
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - .github
+  - .cursor
+  - .gitignore
+  - tests
+  - tools
+  - .luacheckrc
