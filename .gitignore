@@ -12,3 +12,4 @@
 
 # Internal working notes (designs, plans, reviews) stay local
 docs/superpowers/
+.cursor/
